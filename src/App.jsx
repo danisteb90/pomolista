@@ -107,11 +107,15 @@ export default function App() {
   const [isActive, setIsActive] = React.useState(false);
   const [pomodoros, setPomodoros] = React.useState(0);
   const [showWarning, setShowWarning] = React.useState(false);
+  const [isLoaded, setIsLoaded] = React.useState(false); // **NUEVO: Flag para controlar la carga inicial**
 
   // --- HOOKS PARA EFECTOS SECUNDARIOS ---
 
   // Hook para el temporizador principal
   React.useEffect(() => {
+    // Solo correr si la app ya cargó el estado guardado
+    if (!isLoaded) return;
+
     let interval = null;
 
     if (isActive && timeLeft > 0) {
@@ -151,10 +155,11 @@ export default function App() {
     }
 
     return () => clearInterval(interval);
-  }, [isActive, timeLeft, mode, pomodoros, currentTask]);
+  }, [isActive, timeLeft, isLoaded]); // Depende de isLoaded para empezar a funcionar
 
   // Hook para actualizar el título del documento
   React.useEffect(() => {
+    if (!isLoaded) return;
     const minutes = Math.floor(timeLeft / 60);
     const seconds = timeLeft % 60;
     const timeStr = `${minutes.toString().padStart(2, "0")}:${seconds
@@ -169,22 +174,14 @@ export default function App() {
         ? "Descanso Corto"
         : "Descanso Largo";
     document.title = `${timeStr} - ${modeText} | PomoLista`;
-  }, [timeLeft, mode, currentTask, tasks]);
+  }, [timeLeft, mode, currentTask, tasks, isLoaded]);
 
   // **MODIFICADO: Hook para cargar TODO el estado al iniciar**
   React.useEffect(() => {
-    // Cargar Tareas
     try {
       const savedTasks = localStorage.getItem("pomolista_tasks");
-      if (savedTasks) {
-        setTasks(JSON.parse(savedTasks));
-      }
-    } catch (error) {
-      console.error("Error al cargar tareas:", error);
-    }
+      if (savedTasks) setTasks(JSON.parse(savedTasks));
 
-    // Cargar Estado del Temporizador
-    try {
       const savedTimerState = localStorage.getItem("pomolista_timerState");
       if (savedTimerState) {
         const { mode, pomodoros, currentTask, timeLeft, isActive, timestamp } =
@@ -204,34 +201,37 @@ export default function App() {
         }
       }
     } catch (error) {
-      console.error("Error al cargar el estado del temporizador:", error);
+      console.error("Error al cargar el estado:", error);
+      // Si hay un error, reseteamos el estado guardado
+      localStorage.removeItem("pomolista_tasks");
+      localStorage.removeItem("pomolista_timerState");
+    } finally {
+      // Marcamos que la carga ha terminado para que los otros hooks puedan funcionar
+      setIsLoaded(true);
     }
-  }, []);
+  }, []); // Este hook solo se ejecuta una vez al montar el componente
 
   // **MODIFICADO: Hook para guardar TODO el estado en el caché**
   React.useEffect(() => {
-    // Guardar Tareas
+    // No guardar nada hasta que la carga inicial esté completa
+    if (!isLoaded) return;
+
     try {
       localStorage.setItem("pomolista_tasks", JSON.stringify(tasks));
-    } catch (error) {
-      console.error("Error al guardar tareas:", error);
-    }
 
-    // Guardar Estado del Temporizador
-    try {
       const timerState = {
         mode,
         timeLeft,
         isActive,
         pomodoros,
         currentTask,
-        timestamp: Date.now(), // Guardamos la hora actual para calcular el tiempo offline
+        timestamp: Date.now(),
       };
       localStorage.setItem("pomolista_timerState", JSON.stringify(timerState));
     } catch (error) {
-      console.error("Error al guardar el estado del temporizador:", error);
+      console.error("Error al guardar el estado:", error);
     }
-  }, [tasks, mode, timeLeft, isActive, pomodoros, currentTask]);
+  }, [tasks, mode, timeLeft, isActive, pomodoros, currentTask, isLoaded]);
 
   // --- MANEJADORES DE EVENTOS ---
 
@@ -401,7 +401,7 @@ export default function App() {
                 className="bg-green-300 h-4 rounded-full transition-all duration-500 ease-out flex items-center justify-end"
                 style={{ width: `${progressPercentage}%` }}
               >
-                <span className="text-xs font-bold text-white pr-2">
+                <span className="text-xs font-bold text-green-800 pr-2">
                   {Math.round(progressPercentage)}%
                 </span>
               </div>
