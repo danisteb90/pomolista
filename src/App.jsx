@@ -87,20 +87,38 @@ const CheckCircle = (props) => (
     <polyline points="22 4 12 14.01 9 11.01"></polyline>
   </svg>
 );
+const SkipForward = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <polygon points="5 4 15 12 5 20 5 4"></polygon>
+    <line x1="19" y1="5" x2="19" y2="19"></line>
+  </svg>
+);
 
 // --- Componente principal de la aplicación PomoLista ---
 
 export default function App() {
   // --- CONFIGURACIÓN DEL TEMPORIZADOR (en segundos) ---
   const DURATIONS = {
-    work: 25 * 60, // 25 minutos
-    shortBreak: 5 * 60, // 5 minutos
-    longBreak: 20 * 60, // 20 minutos
+    work: 25 * 60,
+    shortBreak: 5 * 60,
+    longBreak: 20 * 60,
   };
 
   // --- ESTADO DE LA APLICACIÓN ---
   const [tasks, setTasks] = React.useState([]);
   const [newTask, setNewTask] = React.useState("");
+  const [newPomodoroTarget, setNewPomodoroTarget] = React.useState(1);
   const [currentTask, setCurrentTask] = React.useState(null);
   const [mode, setMode] = React.useState("work");
   const [timeLeft, setTimeLeft] = React.useState(DURATIONS.work);
@@ -108,37 +126,39 @@ export default function App() {
   const [pomodoros, setPomodoros] = React.useState(0);
   const [showWarning, setShowWarning] = React.useState(false);
   const [isLoaded, setIsLoaded] = React.useState(false);
-  const [editingTaskId, setEditingTaskId] = React.useState(null); // **NUEVO: ID de la tarea en edición**
+  const [editingTaskId, setEditingTaskId] = React.useState(null);
+  const [editingTaskData, setEditingTaskData] = React.useState({
+    text: "",
+    target: 1,
+  });
 
   // --- HOOKS PARA EFECTOS SECUNDARIOS ---
-
-  // Hook para el temporizador principal
   React.useEffect(() => {
     if (!isLoaded) return;
-
     let interval = null;
-
     if (isActive && timeLeft > 0) {
-      interval = setInterval(() => {
-        setTimeLeft((time) => time - 1);
-      }, 1000);
+      interval = setInterval(() => setTimeLeft((time) => time - 1), 1000);
     } else if (isActive && timeLeft <= 0) {
       playAlarmSound();
-
       if (mode === "work") {
         const newPomodoroCount = pomodoros + 1;
         setPomodoros(newPomodoroCount);
-
         if (currentTask) {
           setTasks((prevTasks) =>
-            prevTasks.map((task) =>
-              task.id === currentTask
-                ? { ...task, pomodorosSpent: task.pomodorosSpent + 1 }
-                : task
-            )
+            prevTasks.map((task) => {
+              if (task.id === currentTask) {
+                const newSpent = task.pomodorosSpent + 1;
+                const isCompleted = newSpent >= task.pomodorosTarget;
+                return {
+                  ...task,
+                  pomodorosSpent: newSpent,
+                  completed: isCompleted,
+                };
+              }
+              return task;
+            })
           );
         }
-
         if (newPomodoroCount % 4 === 0) {
           setMode("longBreak");
           setTimeLeft(DURATIONS.longBreak);
@@ -153,11 +173,9 @@ export default function App() {
       }
       setIsActive(false);
     }
-
     return () => clearInterval(interval);
   }, [isActive, timeLeft, isLoaded]);
 
-  // Hook para actualizar el título del documento
   React.useEffect(() => {
     if (!isLoaded) return;
     const minutes = Math.floor(timeLeft / 60);
@@ -165,18 +183,16 @@ export default function App() {
     const timeStr = `${minutes.toString().padStart(2, "0")}:${seconds
       .toString()
       .padStart(2, "0")}`;
+    const taskText = tasks.find((t) => t.id === currentTask)?.text || "Enfoque";
     const modeText =
       mode === "work"
-        ? currentTask
-          ? tasks.find((t) => t.id === currentTask)?.text || "Enfoque"
-          : "Enfoque"
+        ? taskText
         : mode === "shortBreak"
         ? "Descanso Corto"
         : "Descanso Largo";
     document.title = `${timeStr} - ${modeText} | PomoLista`;
   }, [timeLeft, mode, currentTask, tasks, isLoaded]);
 
-  // Hook para cargar TODO el estado al iniciar
   React.useEffect(() => {
     try {
       const savedTasks = localStorage.getItem("pomolista_tasks");
@@ -186,16 +202,13 @@ export default function App() {
       if (savedTimerState) {
         const { mode, pomodoros, currentTask, timeLeft, isActive, timestamp } =
           JSON.parse(savedTimerState);
-
         setMode(mode);
         setPomodoros(pomodoros);
         setCurrentTask(currentTask);
         setIsActive(isActive);
-
         if (isActive) {
           const elapsedSeconds = Math.round((Date.now() - timestamp) / 1000);
-          const newTimeLeft = timeLeft - elapsedSeconds;
-          setTimeLeft(Math.max(0, newTimeLeft));
+          setTimeLeft(Math.max(0, timeLeft - elapsedSeconds));
         } else {
           setTimeLeft(timeLeft);
         }
@@ -209,10 +222,8 @@ export default function App() {
     }
   }, []);
 
-  // Hook para guardar TODO el estado en el caché
   React.useEffect(() => {
     if (!isLoaded) return;
-
     try {
       localStorage.setItem("pomolista_tasks", JSON.stringify(tasks));
       const timerState = {
@@ -230,7 +241,6 @@ export default function App() {
   }, [tasks, mode, timeLeft, isActive, pomodoros, currentTask, isLoaded]);
 
   // --- MANEJADORES DE EVENTOS ---
-
   const playAlarmSound = () => {
     try {
       const audioContext = new (window.AudioContext ||
@@ -271,6 +281,13 @@ export default function App() {
     setCurrentTask(null);
   };
 
+  const handleSkipBreak = () => {
+    setMode("work");
+    setTimeLeft(DURATIONS.work);
+    setIsActive(false);
+    setCurrentTask(null);
+  };
+
   const handleAddTask = (e) => {
     e.preventDefault();
     if (newTask.trim()) {
@@ -281,9 +298,11 @@ export default function App() {
           text: newTask.trim(),
           completed: false,
           pomodorosSpent: 0,
+          pomodorosTarget: newPomodoroTarget,
         },
       ]);
       setNewTask("");
+      setNewPomodoroTarget(1);
     }
   };
 
@@ -304,10 +323,7 @@ export default function App() {
   const handleDeleteSeasonedTasks = () => {
     setTasks((prevTasks) => {
       const tasksToKeep = prevTasks.filter((task) => task.pomodorosSpent <= 1);
-      const currentTaskWasDeleted = !tasksToKeep.some(
-        (task) => task.id === currentTask
-      );
-      if (currentTaskWasDeleted) {
+      if (!tasksToKeep.some((task) => task.id === currentTask)) {
         setCurrentTask(null);
         setIsActive(false);
       }
@@ -324,33 +340,39 @@ export default function App() {
   };
 
   const handleSetCurrentTask = (id) => {
-    if (!isActive && editingTaskId !== id) {
+    const task = tasks.find((t) => t.id === id);
+    if (!isActive && editingTaskId !== id && task && !task.completed) {
       setCurrentTask(id);
       setMode("work");
       setTimeLeft(DURATIONS.work);
     }
   };
 
-  // **NUEVO: Manejadores para editar tareas**
   const handleStartEditing = (task) => {
     if (!task.completed) {
       setEditingTaskId(task.id);
+      setEditingTaskData({ text: task.text, target: task.pomodorosTarget });
     }
   };
 
-  const handleUpdateTaskText = (id, newText) => {
-    setTasks(
-      tasks.map((task) => (task.id === id ? { ...task, text: newText } : task))
-    );
+  const handleCancelEditing = () => {
     setEditingTaskId(null);
   };
 
-  const handleEditKeyDown = (e, task) => {
-    if (e.key === "Enter") {
-      handleUpdateTaskText(task.id, e.target.value);
-    } else if (e.key === "Escape") {
-      setEditingTaskId(null);
-    }
+  const handleUpdateTask = (e) => {
+    e.preventDefault();
+    setTasks(
+      tasks.map((task) =>
+        task.id === editingTaskId
+          ? {
+              ...task,
+              text: editingTaskData.text,
+              pomodorosTarget: editingTaskData.target,
+            }
+          : task
+      )
+    );
+    setEditingTaskId(null);
   };
 
   // --- CÁLCULOS PARA RENDERIZADO ---
@@ -427,7 +449,6 @@ export default function App() {
                 className="bg-green-400 h-4 rounded-full transition-all duration-500 ease-out flex items-center justify-end"
                 style={{ width: `${progressPercentage}%` }}
               >
-                {/* **MODIFICADO: Color de texto del porcentaje** */}
                 <span className="text-xs font-bold text-white pr-2">
                   {Math.round(progressPercentage)}%
                 </span>
@@ -451,7 +472,7 @@ export default function App() {
               >
                 {formatTime(timeLeft)}
               </p>
-              <div className="flex justify-center space-x-4">
+              <div className="flex justify-center space-x-4 items-center">
                 <button
                   onClick={handleStartPause}
                   className={`p-4 rounded-full ${currentConfig.textColor} ${currentConfig.bgColor} hover:opacity-90 shadow-lg transition`}
@@ -468,6 +489,15 @@ export default function App() {
                 >
                   <RotateCcw className="w-8 h-8" />
                 </button>
+                {(mode === "shortBreak" || mode === "longBreak") && (
+                  <button
+                    onClick={handleSkipBreak}
+                    title="Saltar descanso"
+                    className={`p-4 rounded-full ${currentConfig.textColor} bg-white/20 hover:bg-white/30 shadow-lg transition`}
+                  >
+                    <SkipForward className="w-8 h-8" />
+                  </button>
+                )}
               </div>
             </div>
             <div className="mt-6">
@@ -516,57 +546,102 @@ export default function App() {
                 </button>
               </div>
             </div>
-            <form onSubmit={handleAddTask} className="flex mb-4">
+            <form onSubmit={handleAddTask} className="flex mb-4 gap-2">
               <input
                 type="text"
                 value={newTask}
                 onChange={(e) => setNewTask(e.target.value)}
                 placeholder="Añadir nueva tarea..."
-                className="flex-grow p-3 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-red-400 transition"
+                className="flex-grow p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 transition"
+              />
+              <input
+                type="number"
+                value={newPomodoroTarget}
+                onChange={(e) =>
+                  setNewPomodoroTarget(Math.max(1, Number(e.target.value)))
+                }
+                min="1"
+                className="w-20 p-3 border border-gray-300 rounded-lg text-center font-bold focus:outline-none focus:ring-2 focus:ring-red-400 transition"
+                title="Objetivo de Pomodoros"
               />
               <button
                 type="submit"
-                className="bg-red-500 text-white p-3 rounded-r-lg font-bold hover:bg-red-600 transition"
+                className="bg-red-500 text-white p-3 rounded-lg font-bold hover:bg-red-600 transition"
               >
                 +
               </button>
             </form>
 
-            <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-2">
+            <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
               {tasks.length > 0 ? (
-                tasks.map((task) => (
-                  <div
-                    key={task.id}
-                    // **MODIFICADO: Estilo de selección de tarea**
-                    className={`flex items-center p-3 rounded-lg transition-all duration-300 border-2 ${
-                      currentTask === task.id
-                        ? "bg-red-100 border-red-500"
-                        : "bg-gray-100 border-transparent"
-                    }`}
-                  >
-                    <button
-                      onClick={() => handleToggleTask(task.id)}
-                      className={`mr-3 w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-full border-2 transition ${
-                        task.completed
-                          ? "bg-green-500 border-green-500 text-white"
-                          : "border-gray-400"
-                      }`}
+                tasks.map((task) =>
+                  editingTaskId === task.id ? (
+                    // **MODIFICADO: Se elimina el onBlur para evitar cierre prematuro**
+                    <form
+                      key={task.id}
+                      onSubmit={handleUpdateTask}
+                      className="flex items-center p-3 rounded-lg bg-yellow-100 border-2 border-yellow-500 gap-2"
                     >
-                      {task.completed && <CheckCircle className="w-4 h-4" />}
-                    </button>
-                    {/* **NUEVO: Lógica de edición de tarea** */}
-                    {editingTaskId === task.id ? (
+                      <span className="mr-3 w-6 h-6 flex-shrink-0"></span>{" "}
+                      {/* Espaciador */}
                       <input
                         type="text"
-                        defaultValue={task.text}
-                        onKeyDown={(e) => handleEditKeyDown(e, task)}
-                        onBlur={(e) =>
-                          handleUpdateTaskText(task.id, e.target.value)
+                        value={editingTaskData.text}
+                        onChange={(e) =>
+                          setEditingTaskData({
+                            ...editingTaskData,
+                            text: e.target.value,
+                          })
                         }
                         autoFocus
-                        className="flex-grow bg-white border border-gray-400 rounded px-1 -my-1"
+                        className="flex-grow bg-white border border-gray-400 rounded px-2 py-1"
                       />
-                    ) : (
+                      <input
+                        type="number"
+                        min="1"
+                        value={editingTaskData.target}
+                        onChange={(e) =>
+                          setEditingTaskData({
+                            ...editingTaskData,
+                            target: Math.max(1, Number(e.target.value)),
+                          })
+                        }
+                        className="w-16 text-center border border-gray-400 rounded px-2 py-1"
+                      />
+                      <span className="mr-3">🍅</span>
+                      <button
+                        type="submit"
+                        className="text-xs font-bold py-1 px-2 rounded-full bg-green-500 text-white"
+                      >
+                        Guardar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelEditing}
+                        className="text-xs font-bold py-1 px-2 rounded-full bg-gray-400 text-white"
+                      >
+                        X
+                      </button>
+                    </form>
+                  ) : (
+                    <div
+                      key={task.id}
+                      className={`flex items-center p-3 rounded-lg transition-all duration-300 border-2 ${
+                        currentTask === task.id
+                          ? "bg-red-100 border-red-500"
+                          : "bg-gray-100 border-transparent"
+                      }`}
+                    >
+                      <button
+                        onClick={() => handleToggleTask(task.id)}
+                        className={`mr-3 w-6 h-6 flex-shrink-0 flex items-center justify-center rounded-full border-2 transition ${
+                          task.completed
+                            ? "bg-green-500 border-green-500 text-white"
+                            : "border-gray-400"
+                        }`}
+                      >
+                        {task.completed && <CheckCircle className="w-4 h-4" />}
+                      </button>
                       <span
                         onDoubleClick={() => handleStartEditing(task)}
                         className={`flex-grow cursor-pointer ${
@@ -577,37 +652,41 @@ export default function App() {
                       >
                         {task.text}
                       </span>
-                    )}
 
-                    <div className="ml-auto flex items-center gap-2 text-sm text-gray-600 mr-3">
-                      <span className="font-bold text-red-500">
-                        {task.pomodorosSpent}
-                      </span>
-                      <span>🍅</span>
-                    </div>
+                      <div className="ml-auto flex items-center gap-2 text-sm text-gray-600 mr-3">
+                        <span
+                          className={`font-bold ${
+                            task.completed ? "text-green-600" : "text-red-500"
+                          }`}
+                        >
+                          {task.pomodorosSpent} / {task.pomodorosTarget}
+                        </span>
+                        <span>🍅</span>
+                      </div>
 
-                    {!task.completed && (
+                      {!task.completed && (
+                        <button
+                          onClick={() => handleSetCurrentTask(task.id)}
+                          className={`text-xs font-bold py-1 px-2 rounded-full transition ${
+                            currentTask === task.id
+                              ? "bg-red-500 text-white"
+                              : "bg-gray-200 text-gray-600 hover:bg-red-200"
+                          }`}
+                          disabled={isActive || editingTaskId === task.id}
+                          title="Enfocarse en esta tarea"
+                        >
+                          Focus
+                        </button>
+                      )}
                       <button
-                        onClick={() => handleSetCurrentTask(task.id)}
-                        className={`text-xs font-bold py-1 px-2 rounded-full transition ${
-                          currentTask === task.id
-                            ? "bg-red-500 text-white"
-                            : "bg-gray-200 text-gray-600 hover:bg-red-200"
-                        }`}
-                        disabled={isActive || editingTaskId === task.id}
-                        title="Enfocarse en esta tarea"
+                        onClick={() => handleDeleteTask(task.id)}
+                        className="ml-3 text-gray-400 hover:text-red-500 transition"
                       >
-                        Focus
+                        <Trash2 className="w-5 h-5" />
                       </button>
-                    )}
-                    <button
-                      onClick={() => handleDeleteTask(task.id)}
-                      className="ml-3 text-gray-400 hover:text-red-500 transition"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  </div>
-                ))
+                    </div>
+                  )
+                )
               ) : (
                 <p className="text-gray-500 text-center py-4">
                   Añade tu primera tarea para empezar el día.
