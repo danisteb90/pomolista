@@ -107,14 +107,13 @@ export default function App() {
   const [isActive, setIsActive] = React.useState(false);
   const [pomodoros, setPomodoros] = React.useState(0);
   const [showWarning, setShowWarning] = React.useState(false);
-  const [isLoaded, setIsLoaded] = React.useState(false); // **NUEVO: Flag para controlar la carga inicial**
+  const [isLoaded, setIsLoaded] = React.useState(false); // Flag para controlar la carga inicial
 
   // --- HOOKS PARA EFECTOS SECUNDARIOS ---
 
   // Hook para el temporizador principal
   React.useEffect(() => {
-    // Solo correr si la app ya cargó el estado guardado
-    if (!isLoaded) return;
+    if (!isLoaded) return; // No correr hasta que el estado se haya cargado desde la caché
 
     let interval = null;
 
@@ -155,7 +154,7 @@ export default function App() {
     }
 
     return () => clearInterval(interval);
-  }, [isActive, timeLeft, isLoaded]); // Depende de isLoaded para empezar a funcionar
+  }, [isActive, timeLeft, isLoaded]);
 
   // Hook para actualizar el título del documento
   React.useEffect(() => {
@@ -176,7 +175,7 @@ export default function App() {
     document.title = `${timeStr} - ${modeText} | PomoLista`;
   }, [timeLeft, mode, currentTask, tasks, isLoaded]);
 
-  // **MODIFICADO: Hook para cargar TODO el estado al iniciar**
+  // Hook para cargar TODO el estado al iniciar
   React.useEffect(() => {
     try {
       const savedTasks = localStorage.getItem("pomolista_tasks");
@@ -202,23 +201,19 @@ export default function App() {
       }
     } catch (error) {
       console.error("Error al cargar el estado:", error);
-      // Si hay un error, reseteamos el estado guardado
       localStorage.removeItem("pomolista_tasks");
       localStorage.removeItem("pomolista_timerState");
     } finally {
-      // Marcamos que la carga ha terminado para que los otros hooks puedan funcionar
       setIsLoaded(true);
     }
-  }, []); // Este hook solo se ejecuta una vez al montar el componente
+  }, []); // Este hook solo se ejecuta una vez
 
-  // **MODIFICADO: Hook para guardar TODO el estado en el caché**
+  // Hook para guardar TODO el estado en el caché
   React.useEffect(() => {
-    // No guardar nada hasta que la carga inicial esté completa
     if (!isLoaded) return;
 
     try {
       localStorage.setItem("pomolista_tasks", JSON.stringify(tasks));
-
       const timerState = {
         mode,
         timeLeft,
@@ -369,6 +364,11 @@ export default function App() {
   const completedTasksCount = tasks.filter((task) => task.completed).length;
   const progressPercentage =
     tasks.length > 0 ? (completedTasksCount / tasks.length) * 100 : 0;
+
+  // **NUEVO: Evitar el renderizado inicial hasta que la caché esté cargada**
+  if (!isLoaded) {
+    return null; // O un spinner de carga: <div className="min-h-screen bg-gray-800 flex items-center justify-center">Cargando...</div>
+  }
 
   return (
     <div
