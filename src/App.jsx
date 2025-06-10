@@ -401,7 +401,7 @@ export default function App() {
                 className="bg-green-300 h-4 rounded-full transition-all duration-500 ease-out flex items-center justify-end"
                 style={{ width: `${progressPercentage}%` }}
               >
-                <span className="text-xs font-bold text-green-800 pr-2">
+                <span className="text-xs font-bold text-white pr-2">
                   {Math.round(progressPercentage)}%
                 </span>
               </div>
@@ -478,7 +478,7 @@ export default function App() {
                   className="text-xs font-semibold text-orange-600 hover:bg-orange-100 py-1 px-3 rounded-full transition"
                   title="Eliminar tareas con más de 1 Pomodoro"
                 >
-                  Limpiar veteranas
+                  Limpiar antiguas
                 </button>
                 <button
                   onClick={handleDeleteAllTasks}
@@ -512,7 +512,7 @@ export default function App() {
                     key={task.id}
                     className={`flex items-center p-3 rounded-lg transition-all duration-300 ${
                       currentTask === task.id
-                        ? "bg-red-100 ring-2 ring-red-400"
+                        ? "bg-red-100 border border-red-500"
                         : "bg-gray-100"
                     }`}
                   >
