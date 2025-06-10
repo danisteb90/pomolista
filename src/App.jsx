@@ -101,11 +101,11 @@ export default function App() {
   // --- ESTADO DE LA APLICACIÓN ---
   const [tasks, setTasks] = React.useState([]);
   const [newTask, setNewTask] = React.useState("");
-  const [currentTask, setCurrentTask] = React.useState(null); // ID de la tarea actual
-  const [mode, setMode] = React.useState("work"); // 'work', 'shortBreak', 'longBreak'
+  const [currentTask, setCurrentTask] = React.useState(null);
+  const [mode, setMode] = React.useState("work");
   const [timeLeft, setTimeLeft] = React.useState(DURATIONS.work);
   const [isActive, setIsActive] = React.useState(false);
-  const [pomodoros, setPomodoros] = React.useState(0); // Pomodoros en el ciclo actual (para descanso largo)
+  const [pomodoros, setPomodoros] = React.useState(0);
   const [showWarning, setShowWarning] = React.useState(false);
 
   // --- HOOKS PARA EFECTOS SECUNDARIOS ---
@@ -118,7 +118,7 @@ export default function App() {
       interval = setInterval(() => {
         setTimeLeft((time) => time - 1);
       }, 1000);
-    } else if (isActive && timeLeft === 0) {
+    } else if (isActive && timeLeft <= 0) {
       playAlarmSound();
 
       if (mode === "work") {
@@ -171,8 +171,9 @@ export default function App() {
     document.title = `${timeStr} - ${modeText} | PomoLista`;
   }, [timeLeft, mode, currentTask, tasks]);
 
-  // Hook para persistir y cargar tareas del localStorage (Esto funciona como la caché del navegador)
+  // **MODIFICADO: Hook para cargar TODO el estado al iniciar**
   React.useEffect(() => {
+    // Cargar Tareas
     try {
       const savedTasks = localStorage.getItem("pomolista_tasks");
       if (savedTasks) {
@@ -181,15 +182,56 @@ export default function App() {
     } catch (error) {
       console.error("Error al cargar tareas:", error);
     }
+
+    // Cargar Estado del Temporizador
+    try {
+      const savedTimerState = localStorage.getItem("pomolista_timerState");
+      if (savedTimerState) {
+        const { mode, pomodoros, currentTask, timeLeft, isActive, timestamp } =
+          JSON.parse(savedTimerState);
+
+        setMode(mode);
+        setPomodoros(pomodoros);
+        setCurrentTask(currentTask);
+        setIsActive(isActive);
+
+        if (isActive) {
+          const elapsedSeconds = Math.round((Date.now() - timestamp) / 1000);
+          const newTimeLeft = timeLeft - elapsedSeconds;
+          setTimeLeft(Math.max(0, newTimeLeft));
+        } else {
+          setTimeLeft(timeLeft);
+        }
+      }
+    } catch (error) {
+      console.error("Error al cargar el estado del temporizador:", error);
+    }
   }, []);
 
+  // **MODIFICADO: Hook para guardar TODO el estado en el caché**
   React.useEffect(() => {
+    // Guardar Tareas
     try {
       localStorage.setItem("pomolista_tasks", JSON.stringify(tasks));
     } catch (error) {
       console.error("Error al guardar tareas:", error);
     }
-  }, [tasks]);
+
+    // Guardar Estado del Temporizador
+    try {
+      const timerState = {
+        mode,
+        timeLeft,
+        isActive,
+        pomodoros,
+        currentTask,
+        timestamp: Date.now(), // Guardamos la hora actual para calcular el tiempo offline
+      };
+      localStorage.setItem("pomolista_timerState", JSON.stringify(timerState));
+    } catch (error) {
+      console.error("Error al guardar el estado del temporizador:", error);
+    }
+  }, [tasks, mode, timeLeft, isActive, pomodoros, currentTask]);
 
   // --- MANEJADORES DE EVENTOS ---
 
@@ -324,16 +366,15 @@ export default function App() {
   };
   const currentConfig = modeConfig[mode];
 
-  // **NUEVO: Cálculo del progreso**
   const completedTasksCount = tasks.filter((task) => task.completed).length;
   const progressPercentage =
     tasks.length > 0 ? (completedTasksCount / tasks.length) * 100 : 0;
 
   return (
     <div
-      className={`min-h-screen font-sans transition-colors duration-500 rounded-2xl ${currentConfig.bgColor}`}
+      className={`min-h-screen font-sans transition-colors duration-500 ${currentConfig.bgColor}`}
     >
-      <div className="container mx-auto max-w-2xl p-4 sm:p-6 md:p-8 rounded-2xl">
+      <div className="container mx-auto max-w-2xl p-4 sm:p-6 md:p-8">
         <header className="text-center mb-8">
           <h1
             className={`text-4xl sm:text-5xl font-bold ${currentConfig.textColor} drop-shadow-md`}
@@ -344,7 +385,6 @@ export default function App() {
             Enfócate. Descansa. Repite.
           </p>
 
-          {/* **NUEVO: Barra de Progreso del Día** */}
           <div className="mt-6 w-full max-w-md mx-auto">
             <div className="flex justify-between items-center mb-1">
               <span
