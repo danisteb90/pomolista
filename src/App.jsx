@@ -107,13 +107,14 @@ export default function App() {
   const [isActive, setIsActive] = React.useState(false);
   const [pomodoros, setPomodoros] = React.useState(0);
   const [showWarning, setShowWarning] = React.useState(false);
-  const [isLoaded, setIsLoaded] = React.useState(false); // Flag para controlar la carga inicial
+  const [isLoaded, setIsLoaded] = React.useState(false);
+  const [editingTaskId, setEditingTaskId] = React.useState(null); // **NUEVO: ID de la tarea en edición**
 
   // --- HOOKS PARA EFECTOS SECUNDARIOS ---
 
   // Hook para el temporizador principal
   React.useEffect(() => {
-    if (!isLoaded) return; // No correr hasta que el estado se haya cargado desde la caché
+    if (!isLoaded) return;
 
     let interval = null;
 
@@ -206,7 +207,7 @@ export default function App() {
     } finally {
       setIsLoaded(true);
     }
-  }, []); // Este hook solo se ejecuta una vez
+  }, []);
 
   // Hook para guardar TODO el estado en el caché
   React.useEffect(() => {
@@ -323,10 +324,32 @@ export default function App() {
   };
 
   const handleSetCurrentTask = (id) => {
-    if (!isActive) {
+    if (!isActive && editingTaskId !== id) {
       setCurrentTask(id);
       setMode("work");
       setTimeLeft(DURATIONS.work);
+    }
+  };
+
+  // **NUEVO: Manejadores para editar tareas**
+  const handleStartEditing = (task) => {
+    if (!task.completed) {
+      setEditingTaskId(task.id);
+    }
+  };
+
+  const handleUpdateTaskText = (id, newText) => {
+    setTasks(
+      tasks.map((task) => (task.id === id ? { ...task, text: newText } : task))
+    );
+    setEditingTaskId(null);
+  };
+
+  const handleEditKeyDown = (e, task) => {
+    if (e.key === "Enter") {
+      handleUpdateTaskText(task.id, e.target.value);
+    } else if (e.key === "Escape") {
+      setEditingTaskId(null);
     }
   };
 
@@ -365,9 +388,12 @@ export default function App() {
   const progressPercentage =
     tasks.length > 0 ? (completedTasksCount / tasks.length) * 100 : 0;
 
-  // **NUEVO: Evitar el renderizado inicial hasta que la caché esté cargada**
   if (!isLoaded) {
-    return null; // O un spinner de carga: <div className="min-h-screen bg-gray-800 flex items-center justify-center">Cargando...</div>
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white font-bold text-xl">
+        Cargando PomoLista...
+      </div>
+    );
   }
 
   return (
@@ -398,9 +424,10 @@ export default function App() {
             </div>
             <div className="w-full bg-white/20 rounded-full h-4 shadow-inner">
               <div
-                className="bg-green-300 h-4 rounded-full transition-all duration-500 ease-out flex items-center justify-end"
+                className="bg-green-400 h-4 rounded-full transition-all duration-500 ease-out flex items-center justify-end"
                 style={{ width: `${progressPercentage}%` }}
               >
+                {/* **MODIFICADO: Color de texto del porcentaje** */}
                 <span className="text-xs font-bold text-white pr-2">
                   {Math.round(progressPercentage)}%
                 </span>
@@ -478,7 +505,7 @@ export default function App() {
                   className="text-xs font-semibold text-orange-600 hover:bg-orange-100 py-1 px-3 rounded-full transition"
                   title="Eliminar tareas con más de 1 Pomodoro"
                 >
-                  Limpiar antiguas
+                  Limpiar veteranas
                 </button>
                 <button
                   onClick={handleDeleteAllTasks}
@@ -510,10 +537,11 @@ export default function App() {
                 tasks.map((task) => (
                   <div
                     key={task.id}
-                    className={`flex items-center p-3 rounded-lg transition-all duration-300 ${
+                    // **MODIFICADO: Estilo de selección de tarea**
+                    className={`flex items-center p-3 rounded-lg transition-all duration-300 border-2 ${
                       currentTask === task.id
-                        ? "bg-red-100 border border-red-500"
-                        : "bg-gray-100"
+                        ? "bg-red-100 border-red-500"
+                        : "bg-gray-100 border-transparent"
                     }`}
                   >
                     <button
@@ -526,15 +554,30 @@ export default function App() {
                     >
                       {task.completed && <CheckCircle className="w-4 h-4" />}
                     </button>
-                    <span
-                      className={`flex-grow ${
-                        task.completed
-                          ? "line-through text-gray-400"
-                          : "text-gray-800"
-                      }`}
-                    >
-                      {task.text}
-                    </span>
+                    {/* **NUEVO: Lógica de edición de tarea** */}
+                    {editingTaskId === task.id ? (
+                      <input
+                        type="text"
+                        defaultValue={task.text}
+                        onKeyDown={(e) => handleEditKeyDown(e, task)}
+                        onBlur={(e) =>
+                          handleUpdateTaskText(task.id, e.target.value)
+                        }
+                        autoFocus
+                        className="flex-grow bg-white border border-gray-400 rounded px-1 -my-1"
+                      />
+                    ) : (
+                      <span
+                        onDoubleClick={() => handleStartEditing(task)}
+                        className={`flex-grow cursor-pointer ${
+                          task.completed
+                            ? "line-through text-gray-400"
+                            : "text-gray-800"
+                        }`}
+                      >
+                        {task.text}
+                      </span>
+                    )}
 
                     <div className="ml-auto flex items-center gap-2 text-sm text-gray-600 mr-3">
                       <span className="font-bold text-red-500">
@@ -551,7 +594,7 @@ export default function App() {
                             ? "bg-red-500 text-white"
                             : "bg-gray-200 text-gray-600 hover:bg-red-200"
                         }`}
-                        disabled={isActive}
+                        disabled={isActive || editingTaskId === task.id}
                         title="Enfocarse en esta tarea"
                       >
                         Focus
