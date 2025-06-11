@@ -131,14 +131,29 @@ export default function App() {
     text: "",
     target: 1,
   });
+  const [targetTime, setTargetTime] = React.useState(null); // **NUEVO: Almacena el timestamp de finalización**
 
   // --- HOOKS PARA EFECTOS SECUNDARIOS ---
+
+  // **MODIFICADO: Hook del temporizador para ser preciso**
   React.useEffect(() => {
     if (!isLoaded) return;
+
     let interval = null;
-    if (isActive && timeLeft > 0) {
-      interval = setInterval(() => setTimeLeft((time) => time - 1), 1000);
-    } else if (isActive && timeLeft <= 0) {
+
+    if (isActive && targetTime) {
+      interval = setInterval(() => {
+        const newTimeLeft = Math.round((targetTime - Date.now()) / 1000);
+        if (newTimeLeft <= 0) {
+          setTimeLeft(0); // Asegura que el tiempo llegue a 0 antes de procesar el final
+        } else {
+          setTimeLeft(newTimeLeft);
+        }
+      }, 500); // Se ejecuta más frecuente para mayor precisión visual
+    }
+
+    // Lógica para cuando el contador llega a cero
+    if (isActive && timeLeft <= 0) {
       playAlarmSound();
       if (mode === "work") {
         const newPomodoroCount = pomodoros + 1;
@@ -172,9 +187,10 @@ export default function App() {
         setTimeLeft(DURATIONS.work);
       }
       setIsActive(false);
+      setTargetTime(null);
     }
     return () => clearInterval(interval);
-  }, [isActive, timeLeft, isLoaded]);
+  }, [isActive, timeLeft, isLoaded, targetTime]);
 
   React.useEffect(() => {
     if (!isLoaded) return;
@@ -193,6 +209,7 @@ export default function App() {
     document.title = `${timeStr} - ${modeText} | PomoLista`;
   }, [timeLeft, mode, currentTask, tasks, isLoaded]);
 
+  // Hook para cargar el estado al iniciar
   React.useEffect(() => {
     try {
       const savedTasks = localStorage.getItem("pomolista_tasks");
@@ -200,28 +217,36 @@ export default function App() {
 
       const savedTimerState = localStorage.getItem("pomolista_timerState");
       if (savedTimerState) {
-        const { mode, pomodoros, currentTask, timeLeft, isActive, timestamp } =
-          JSON.parse(savedTimerState);
+        const {
+          mode,
+          pomodoros,
+          currentTask,
+          timeLeft: savedTimeLeft,
+          isActive,
+          targetTime: savedTargetTime,
+        } = JSON.parse(savedTimerState);
         setMode(mode);
         setPomodoros(pomodoros);
         setCurrentTask(currentTask);
         setIsActive(isActive);
-        if (isActive) {
-          const elapsedSeconds = Math.round((Date.now() - timestamp) / 1000);
-          setTimeLeft(Math.max(0, timeLeft - elapsedSeconds));
+        setTargetTime(savedTargetTime); // Cargar el targetTime
+
+        if (isActive && savedTargetTime) {
+          const newTimeLeft = Math.round((savedTargetTime - Date.now()) / 1000);
+          setTimeLeft(Math.max(0, newTimeLeft));
         } else {
-          setTimeLeft(timeLeft);
+          setTimeLeft(savedTimeLeft);
         }
       }
     } catch (error) {
       console.error("Error al cargar el estado:", error);
-      localStorage.removeItem("pomolista_tasks");
-      localStorage.removeItem("pomolista_timerState");
+      localStorage.clear();
     } finally {
       setIsLoaded(true);
     }
   }, []);
 
+  // Hook para guardar el estado en el caché
   React.useEffect(() => {
     if (!isLoaded) return;
     try {
@@ -232,13 +257,22 @@ export default function App() {
         isActive,
         pomodoros,
         currentTask,
-        timestamp: Date.now(),
+        targetTime,
       };
       localStorage.setItem("pomolista_timerState", JSON.stringify(timerState));
     } catch (error) {
       console.error("Error al guardar el estado:", error);
     }
-  }, [tasks, mode, timeLeft, isActive, pomodoros, currentTask, isLoaded]);
+  }, [
+    tasks,
+    mode,
+    timeLeft,
+    isActive,
+    pomodoros,
+    currentTask,
+    isLoaded,
+    targetTime,
+  ]);
 
   // --- MANEJADORES DE EVENTOS ---
   const playAlarmSound = () => {
@@ -270,11 +304,16 @@ export default function App() {
       return;
     }
     setShowWarning(false);
+    // Si se está iniciando o reanudando
+    if (!isActive) {
+      setTargetTime(Date.now() + timeLeft * 1000);
+    }
     setIsActive(!isActive);
   };
 
   const handleReset = () => {
     setIsActive(false);
+    setTargetTime(null);
     setMode("work");
     setTimeLeft(DURATIONS.work);
     setPomodoros(0);
@@ -282,9 +321,10 @@ export default function App() {
   };
 
   const handleSkipBreak = () => {
+    setIsActive(false);
+    setTargetTime(null);
     setMode("work");
     setTimeLeft(DURATIONS.work);
-    setIsActive(false);
     setCurrentTask(null);
   };
 
@@ -309,23 +349,20 @@ export default function App() {
   const handleDeleteTask = (id) => {
     setTasks(tasks.filter((task) => task.id !== id));
     if (currentTask === id) {
-      setCurrentTask(null);
-      setIsActive(false);
+      handleReset(); // Reiniciar el timer si se borra la tarea actual
     }
   };
 
   const handleDeleteAllTasks = () => {
     setTasks([]);
-    setCurrentTask(null);
-    setIsActive(false);
+    handleReset();
   };
 
   const handleDeleteSeasonedTasks = () => {
     setTasks((prevTasks) => {
       const tasksToKeep = prevTasks.filter((task) => task.pomodorosSpent <= 1);
       if (!tasksToKeep.some((task) => task.id === currentTask)) {
-        setCurrentTask(null);
-        setIsActive(false);
+        handleReset();
       }
       return tasksToKeep;
     });
@@ -345,6 +382,7 @@ export default function App() {
       setCurrentTask(id);
       setMode("work");
       setTimeLeft(DURATIONS.work);
+      setTargetTime(null);
     }
   };
 
@@ -422,7 +460,7 @@ export default function App() {
     <div
       className={`min-h-screen font-sans transition-colors duration-500 ${currentConfig.bgColor}`}
     >
-      <div className="container mx-auto max-w-5xl p-4 sm:p-6 md:p-8">
+      <div className="container mx-auto max-w-2xl p-4 sm:p-6 md:p-8">
         <header className="text-center mb-8">
           <h1
             className={`text-4xl sm:text-5xl font-bold ${currentConfig.textColor} drop-shadow-md`}
@@ -457,7 +495,7 @@ export default function App() {
           </div>
         </header>
 
-        <div className="flex flex-col items-center gap-8 w-full">
+        <div className="flex flex-col items-center gap-8">
           <div className="flex flex-col items-center w-full">
             <div
               className={`w-full max-w-md p-8 rounded-2xl shadow-2xl transition-all duration-500 bg-white/20 backdrop-blur-sm border ${currentConfig.borderColor}`}
@@ -576,7 +614,6 @@ export default function App() {
               {tasks.length > 0 ? (
                 tasks.map((task) =>
                   editingTaskId === task.id ? (
-                    // **MODIFICADO: Se elimina el onBlur para evitar cierre prematuro**
                     <form
                       key={task.id}
                       onSubmit={handleUpdateTask}
