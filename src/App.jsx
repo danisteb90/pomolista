@@ -460,7 +460,7 @@ export default function App() {
     <div
       className={`min-h-screen font-sans transition-colors duration-500 ${currentConfig.bgColor}`}
     >
-      <div className="container mx-auto max-w-2xl p-4 sm:p-6 md:p-8">
+      <div className="container mx-auto max-w-4xl p-4 sm:p-6 md:p-8">
         <header className="text-center mb-8">
           <h1
             className={`text-4xl sm:text-5xl font-bold ${currentConfig.textColor} drop-shadow-md`}
